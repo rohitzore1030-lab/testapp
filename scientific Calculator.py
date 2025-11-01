@@ -1,12 +1,17 @@
-import streamlit as st
+"""
+scientific_calculator.py
+A single-file Tkinter scientific calculator inspired by Casio fx-series.
+Safe expression evaluation using AST (no eval).
+Works in IDLE / standard Python.
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox
 import math
 import ast
 import operator
 
-# --------------------------
-# SAFE EVALUATOR (AST-based)
-# --------------------------
-# Allowed operators map
+# ---------------- Safe evaluator (AST-based) ----------------
 OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -19,25 +24,33 @@ OPERATORS = {
     ast.FloorDiv: operator.floordiv,
 }
 
-# Allowed names (math functions + constants)
+# Allowed functions and constants exposed to the user
 SAFE_NAMES = {
     # constants
     "pi": math.pi,
     "e": math.e,
-    # functions - basic
+    "tau": math.tau if hasattr(math, "tau") else 2 * math.pi,
+    # trig
     "sin": math.sin,
     "cos": math.cos,
     "tan": math.tan,
     "asin": math.asin,
     "acos": math.acos,
     "atan": math.atan,
+    # hyperbolic
     "sinh": math.sinh,
     "cosh": math.cosh,
     "tanh": math.tanh,
-    "log": lambda x, base=math.e: math.log(x, base) if base != math.e else math.log(x),
+    "asinh": math.asinh if hasattr(math, "asinh") else None,
+    "acosh": math.acosh if hasattr(math, "acosh") else None,
+    "atanh": math.atanh if hasattr(math, "atanh") else None,
+    # logs & roots
+    "log": lambda x, base=math.e: math.log(x, base),
     "ln": math.log,
     "log10": math.log10,
     "sqrt": math.sqrt,
+    "cbrt": lambda x: x ** (1.0 / 3.0),
+    # misc
     "abs": abs,
     "round": round,
     "floor": math.floor,
@@ -46,58 +59,64 @@ SAFE_NAMES = {
     "fact": math.factorial,
     "deg": math.degrees,
     "rad": math.radians,
-    # hyperbolic inverse helpers
-    "asinh": math.asinh if hasattr(math, "asinh") else None,
-    "acosh": math.acosh if hasattr(math, "acosh") else None,
-    "atanh": math.atanh if hasattr(math, "atanh") else None,
+    # combinatorics
+    "comb": math.comb if hasattr(math, "comb") else None,
+    "perm": math.perm if hasattr(math, "perm") else None,
 }
 
-# Remove any None functions (for Python versions lacking them)
+# remove None entries for older Python versions
 SAFE_NAMES = {k: v for k, v in SAFE_NAMES.items() if v is not None}
 
 class SafeEvalError(Exception):
     pass
 
-def safe_eval(expr: str):
+def safe_eval(expr: str, extra_names=None):
     """
-    Evaluate a mathematical expression safely using AST.
-    Supports function calls listed in SAFE_NAMES and operators in OPERATORS.
+    Safely evaluate a math expression string.
+    Supports numeric literals, + - * / ** % // unary ops, function calls from SAFE_NAMES,
+    and parentheses. Replaces common unicode operators.
     """
     if not expr or expr.strip() == "":
-        return ""
+        raise SafeEvalError("Empty expression")
 
-    # Replace unicode characters sometimes pasted by users
-    expr = expr.replace("×", "*").replace("÷", "/").replace("^", "**")
+    # clean some user input
+    expr = expr.replace("×", "*").replace("÷", "/").replace("^", "**").replace("−", "-")
+    # allow ANS constant injected by caller via extra_names
 
     try:
         node = ast.parse(expr, mode="eval")
-    except Exception as e:
-        raise SafeEvalError("Parse error")
+    except Exception:
+        raise SafeEvalError("Syntax error")
+
+    names = dict(SAFE_NAMES)
+    if extra_names:
+        names.update(extra_names)
 
     def _eval(node):
         if isinstance(node, ast.Expression):
             return _eval(node.body)
 
-        # numbers
-        if isinstance(node, ast.Constant):
+        if isinstance(node, ast.Constant):  # Python 3.8+
             if isinstance(node.value, (int, float)):
                 return node.value
-            raise SafeEvalError("Invalid constant")
+            else:
+                raise SafeEvalError("Invalid literal")
 
-        # For older Python, ast.Num:
+        # numbers in older AST
         if hasattr(ast, "Num") and isinstance(node, ast.Num):
             return node.n
 
-        # binary operations
         if isinstance(node, ast.BinOp):
             left = _eval(node.left)
             right = _eval(node.right)
             op_type = type(node.op)
             if op_type in OPERATORS:
-                return OPERATORS[op_type](left, right)
-            raise SafeEvalError("Unsupported binary operator")
+                try:
+                    return OPERATORS[op_type](left, right)
+                except Exception as e:
+                    raise SafeEvalError(str(e))
+            raise SafeEvalError("Unsupported operator")
 
-        # unary operations
         if isinstance(node, ast.UnaryOp):
             operand = _eval(node.operand)
             op_type = type(node.op)
@@ -105,134 +124,228 @@ def safe_eval(expr: str):
                 return OPERATORS[op_type](operand)
             raise SafeEvalError("Unsupported unary operator")
 
-        # function calls
         if isinstance(node, ast.Call):
+            # only allow simple function names
             if isinstance(node.func, ast.Name):
-                func_name = node.func.id
-                if func_name not in SAFE_NAMES:
-                    raise SafeEvalError(f"Function '{func_name}' not allowed")
-                func = SAFE_NAMES[func_name]
+                fname = node.func.id
+                if fname not in names:
+                    raise SafeEvalError(f"Function '{fname}' not allowed")
+                func = names[fname]
                 args = [_eval(a) for a in node.args]
-                # keyword args support (basic)
                 kwargs = {}
                 for kw in getattr(node, "keywords", []):
+                    if kw.arg is None:
+                        raise SafeEvalError("Invalid keyword")
                     kwargs[kw.arg] = _eval(kw.value)
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
-                    raise SafeEvalError(str(e))
+                    raise SafeEvalError(f"Function error: {e}")
             else:
                 raise SafeEvalError("Unsafe function call")
-        # names (constants)
-        if isinstance(node, ast.Name):
-            if node.id in SAFE_NAMES:
-                val = SAFE_NAMES[node.id]
-                if callable(val):
-                    # user typed a bare function name, that's not a value
-                    raise SafeEvalError(f"'{node.id}' is a function, call it with ()")
-                return val
-            raise SafeEvalError(f"Name '{node.id}' not allowed")
 
-        if isinstance(node, ast.Subscript):
-            raise SafeEvalError("Subscript not allowed")
+        if isinstance(node, ast.Name):
+            if node.id in names:
+                val = names[node.id]
+                if callable(val):
+                    raise SafeEvalError(f"'{node.id}' is a function; call it with ()")
+                return val
+            raise SafeEvalError(f"Unknown name: {node.id}")
 
         raise SafeEvalError("Unsupported expression element")
 
     result = _eval(node)
-    # convert floats that are near-int to int for display neatness
+    # format small floats that are near ints
     if isinstance(result, float) and abs(result - round(result)) < 1e-12:
-        result = round(result)
+        result = int(round(result))
     return result
 
-# --------------------------
-# STREAMLIT UI
-# --------------------------
-st.set_page_config(page_title="Casio-like Scientific Calculator", layout="wide", initial_sidebar_state="collapsed")
+# ---------------- Tkinter UI ----------------
+class SciCalculator(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Scientific Calculator — Casio-style")
+        self.resizable(False, False)
+        # Appearance
+        self.config(bg="#0a0f1a")
+        self['padx'] = 12
+        self['pady'] = 12
 
-# Custom CSS for look and equal-sized input/output
-st.markdown(
-    """
-    <style>
-    /* page background */
-    .stApp {
-        background: linear-gradient(180deg, #0f172a 0%, #111827 60%);
-        color: #e6eef8;
-        font-family: "Segoe UI", Roboto, Arial, sans-serif;
-    }
+        # state
+        self.ans = None  # last answer
+        self.expression = tk.StringVar()
+        self.output = tk.StringVar()
 
-    /* container card */
-    .calc-card {
-        background: linear-gradient(180deg, #1f2937 0%, #0b1220 100%);
-        border-radius: 14px;
-        padding: 18px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.6);
-        border: 1px solid rgba(255,255,255,0.03);
-    }
+        # fonts and sizes
+        self.display_font = ("Consolas", 18)
+        self.button_font = ("Segoe UI", 11, "bold")
 
-    /* big displays */
-    .display-textarea > div > textarea {
-        height: 96px !important;
-        resize: none;
-        font-size: 20px !important;
-        background: linear-gradient(180deg, #111827, #0b1220) !important;
-        color: #e6eef8 !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-        border: 1px solid rgba(255,255,255,0.06) !important;
-        box-shadow: inset 0 -2px 8px rgba(0,0,0,0.6);
-    }
+        # Build UI
+        self._build_display()
+        self._build_buttons()
+        self._bind_keys()
 
-    /* button style to resemble calculator keys */
-    .key-btn button {
-        border-radius: 10px;
-        padding: 12px 10px;
-        height: 52px;
-        width: 100%;
-        font-weight: 600;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.45);
-        border: 1px solid rgba(255,255,255,0.03);
-    }
-    /* distinct color groups */
-    .op { background: linear-gradient(180deg,#fb923c,#f97316); color: #06121a; }
-    .func { background: linear-gradient(180deg,#94a3b8,#64748b); color: #fff; }
-    .num { background: linear-gradient(180deg,#f8fafc,#e6eef8); color: #031022; }
-    .eq { background: linear-gradient(180deg,#10b981,#059669); color: #fff; font-size:18px; font-weight:800; }
+    def _build_display(self):
+        # Frame to hold displays
+        disp_frame = tk.Frame(self, bg="#0a0f1a")
+        disp_frame.grid(row=0, column=0, sticky="ew", columnspan=6, pady=(0,10))
 
-    /* reduce gap on small screens */
-    @media (max-width: 768px) {
-        .display-textarea > div > textarea { height: 72px !important; font-size:18px !important;}
-        .key-btn button { height: 44px; padding:8px 6px; font-size:14px;}
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        # Input and Output entries of equal visual size
+        # We'll use two Entry widgets with same width and font so they appear same size.
+        entry_width = 28
+        self.inp = tk.Entry(disp_frame, textvariable=self.expression, font=self.display_font,
+                            width=entry_width, justify="right", bd=0, relief="ridge", highlightthickness=2)
+        self.inp.grid(row=0, column=0, columnspan=6, sticky="we", ipady=10, pady=(0,6))
+        self.inp.configure(highlightbackground="#1f2937", highlightcolor="#64ffda", bg="#071024", fg="#e6eef8", insertbackground="#e6eef8")
 
-# Title header
-st.markdown("<h1 style='color:#e6eef8; margin-bottom:6px'>Investment Calculator ─ Casio fx-style</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#9aa7bf; margin-top:0;'>Scientific calculator styled like Casio fx series — powered by Streamlit</p>", unsafe_allow_html=True)
+        self.out = tk.Entry(disp_frame, textvariable=self.output, font=self.display_font,
+                            width=entry_width, justify="right", bd=0, relief="ridge", state="readonly")
+        self.out.grid(row=1, column=0, columnspan=6, sticky="we", ipady=10)
+        self.out.configure(readonlybackground="#071024", fg="#aee6c5")
 
-col1, col2 = st.columns([1, 2])
-with col1:
-    with st.container():
-        st.markdown("<div class='calc-card'>", unsafe_allow_html=True)
+    def _add_button(self, text, row, col, width=1, colspan=1, style=None, command=None):
+        btn = tk.Button(self, text=text, font=self.button_font, bd=0,
+                        fg="#06202b" if style == "num" else "#f8fafc",
+                        bg="#e6eef8" if style == "num" else ("#f97316" if style == "op" else "#6b7280"),
+                        activebackground="#111827", activeforeground="#ffffff",
+                        width=8*width, height=2, command=command or (lambda t=text: self._on_key(t)))
+        btn.grid(row=row, column=col, columnspan=colspan, padx=4, pady=4, sticky="nsew")
+        return btn
 
-        # Initialize expression state
-        if "expr" not in st.session_state:
-            st.session_state.expr = ""
-        if "result" not in st.session_state:
-            st.session_state.result = ""
+    def _build_buttons(self):
+        # Row index offset after display (display used rows 0-1)
+        r = 2
 
-        # Display input and output side-by-side (same size via CSS)
-        st.markdown("<div style='display:flex; gap:12px;'>", unsafe_allow_html=True)
+        # First row (functions)
+        funcs = [
+            ("(",  r, 0), (")", r, 1), ("DEL", r, 2), ("AC", r, 3), ("Ans", r, 4), ("=", r, 5)
+        ]
+        for txt, rr, cc in funcs:
+            if txt == "=":
+                self._add_button(txt, rr, cc, style="op", command=self._calculate)
+            elif txt == "DEL":
+                self._add_button(txt, rr, cc, style="func", command=self._backspace)
+            elif txt == "AC":
+                self._add_button(txt, rr, cc, style="func", command=self._clear_all)
+            elif txt == "Ans":
+                self._add_button(txt, rr, cc, style="func", command=self._use_ans)
+            else:
+                self._add_button(txt, rr, cc, style="func")
 
-        # Input box (left)
-        st.markdown("<div style='flex:1'>", unsafe_allow_html=True)
-        st.markdown("<label style='color:#9aa7bf; font-weight:600'>Input</label>", unsafe_allow_html=True)
-        input_text = st.text_area("", value=st.session_state.expr, key="input_display", placeholder="Enter expression (e.g. sin(pi/2) + 3^2 )", label_visibility="collapsed")
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Scientific and numeric rows
+        button_rows = [
+            ["sin(", "cos(", "tan(", "ln(", "log(", "sqrt("],
+            ["pi", "e", "x^y", "fact(", "mod", "EXP"],
+            ["7", "8", "9", "/", "floor(", "ceil("],
+            ["4", "5", "6", "*", "(", ")"],
+            ["1", "2", "3", "-", "abs(", "round("],
+            ["0", ".", "+", "%", "rad(", "deg("],
+        ]
+        r_start = 3
+        for i, row in enumerate(button_rows):
+            for j, label in enumerate(row):
+                text = label
+                # special mapping
+                if label == "x^y":
+                    cmd = lambda: self._on_key("**")
+                    style = "op"
+                elif label == "EXP":
+                    cmd = lambda: self._on_key("e")
+                    style = "op"
+                elif label == "mod":
+                    cmd = lambda: self._on_key("%")
+                    style = "op"
+                elif label in ("/", "*", "-", "+", "%"):
+                    cmd = None
+                    style = "op"
+                elif label in ("0","1","2","3","4","5","6","7","8","9","."):
+                    cmd = None
+                    style = "num"
+                else:
+                    cmd = None
+                    style = "func"
+                self._add_button(text, r_start + i, j, style=style, command=cmd)
 
-        # Output box (right) - same size due to CSS targeting textarea height
-        st.markdown("<div style='flex:1'>", unsafe_allow_html=True)
-        st.markdown("<label style='color:#9aa7bf; font-weight:600'>Output</label>", unsafe_allow_html=True)
-        output_text =_
+        # make grid expand nicely (even sizing)
+        for c in range(6):
+            self.grid_columnconfigure(c, weight=1)
+
+    # --------- Button actions ----------
+    def _on_key(self, key_text):
+        current = self.expression.get()
+        # append
+        self.expression.set(current + key_text)
+        self.output.set("")  # clear temporary output until = pressed
+
+    def _backspace(self):
+        s = self.expression.get()
+        self.expression.set(s[:-1])
+
+    def _clear_all(self):
+        self.expression.set("")
+        self.output.set("")
+
+    def _use_ans(self):
+        if self.ans is not None:
+            # append previous answer numeric representation
+            self.expression.set(self.expression.get() + str(self.ans))
+
+    def _calculate(self, *_):
+        expr = self.expression.get().strip()
+        if not expr:
+            return
+        try:
+            # supply Ans if present
+            extra = {}
+            if self.ans is not None:
+                extra["ANS"] = self.ans
+                extra["Ans"] = self.ans
+            result = safe_eval(expr, extra_names=extra)
+            self.ans = result
+            self.output.set(str(result))
+        except SafeEvalError as e:
+            self.output.set("Error: " + str(e))
+        except Exception as e:
+            self.output.set("Error")
+
+    # --------- Keyboard support ----------
+    def _bind_keys(self):
+        # enter -> equal
+        self.bind("<Return>", lambda e: self._calculate())
+        # backspace
+        self.bind("<BackSpace>", lambda e: self._backspace())
+        # escape -> clear
+        self.bind("<Escape>", lambda e: self._clear_all())
+        # allow typical characters
+        allowed = "0123456789.+-*/%^()"
+        def on_key(e):
+            if e.char in allowed:
+                self.expression.set(self.expression.get() + e.char)
+            elif e.char == "\r":
+                self._calculate()
+            # allow 'p' => pi shortcut
+            elif e.char.lower() == "p":
+                self.expression.set(self.expression.get() + "pi")
+            elif e.char.lower() == "e":
+                # be careful: 'e' could be used for exp or Euler's number; keep as 'e'
+                self.expression.set(self.expression.get() + "e")
+            # ignore others
+        self.bind("<Key>", on_key)
+
+# ---------------- Run App ----------------
+def main():
+    app = SciCalculator()
+    # center the window
+    app.update_idletasks()
+    width = app.winfo_width()
+    height = app.winfo_height()
+    x = (app.winfo_screenwidth() // 2) - (width // 2)
+    y = (app.winfo_screenheight() // 3) - (height // 3)
+    app.geometry(f"+{x}+{y}")
+    try:
+        app.mainloop()
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == "__main__":
+    main()
