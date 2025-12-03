@@ -219,7 +219,7 @@ def ui_liquidity():
     st.line_chart(us["Liquidity"])
 
     st.subheader("🇮🇳 India Liquidity")
-    st.line_chart(ind["Liquidity"])():
+    st.line_chart(ind["Liquidity"])()
     st.header("💧 Liquidity Dashboard")
     st.line_chart(sample_liquidity("US").set_index('date')['Liquidity'])
 
