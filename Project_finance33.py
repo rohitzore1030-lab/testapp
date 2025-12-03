@@ -32,7 +32,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📊 Finance Toolkit — Risk, Inflation, Interest, Liquidity & World CPI (Fixed Edition)")
+st.title("📊 Finance Toolkit — Risk, Inflation, Interest, Liquidity & World CPI (Fixed Edition)")
 
 # OPTIONAL LIBS
 try:
@@ -82,7 +82,6 @@ def try_parse_datetime(col):
         return pd.to_datetime(col.astype(str), errors='coerce')
 
 # FIXED CSV LOADER — ENSURES DATA LOADS CORRECTLY
-
 def load_returns_from_csv(uploaded_file):
     df = pd.read_csv(uploaded_file)
     for col in df.columns:
@@ -93,7 +92,7 @@ def load_returns_from_csv(uploaded_file):
     for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(how="all")
-    if df.abs().median().median() > 0.5:
+    if not df.empty and df.abs().median().median() > 0.5:
         return df.pct_change().dropna()
     return df
 
@@ -113,11 +112,15 @@ def ui_risk():
 
     st.dataframe(df.tail())
 
-    # FIX: ENSURE NUMERIC
-    df = df.apply(pd.to_numeric, errors='coerce').dropna()
+    # FIX: ENSURE NUMERIC (do not drop rows with some valid data)
+    df = df.apply(pd.to_numeric, errors='coerce').dropna(how='all')
 
     # PORTFOLIO WEIGHTS
     cols = list(df.columns)
+    if len(cols) == 0:
+        st.error("No numeric columns found in the uploaded data or sample.")
+        return
+
     wtxt = st.text_input("Weights (comma separated)")
 
     if wtxt.strip():
@@ -132,7 +135,7 @@ def ui_risk():
 
     w = w / w.sum()
 
-    port_series = (df * w).sum(axis=1)
+    port_series = (df * w).sum(axis=1).dropna()
 
     # FIX: PREVENT EMPTY SERIES
     if len(port_series) < 5:
@@ -207,7 +210,7 @@ def ui_cpi_world():
     st.line_chart(ind["CPI"])
 
 # -------------------------------------------------------------
-# LIQUIDITY — ADDED INDIA & USA
+# LIQUIDITY — ADDED INDIA & USA (FIXED)
 # -------------------------------------------------------------
 def ui_liquidity():
     st.header("💧 Liquidity Dashboard (US & India)")
@@ -219,9 +222,7 @@ def ui_liquidity():
     st.line_chart(us["Liquidity"])
 
     st.subheader("🇮🇳 India Liquidity")
-    st.line_chart(ind["Liquidity"])()
-    st.header("💧 Liquidity Dashboard")
-    st.line_chart(sample_liquidity("US").set_index('date')['Liquidity'])
+    st.line_chart(ind["Liquidity"])
 
 # -------------------------------------------------------------
 # TABS
@@ -233,3 +234,4 @@ with tabs[1]: ui_cpi_world()
 with tabs[2]: ui_liquidity()
 with tabs[3]: ui_interest()
 with tabs[4]: st.write("Finance Toolkit Fixed Version — All errors removed.")
+
