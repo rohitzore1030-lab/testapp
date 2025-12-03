@@ -224,7 +224,7 @@ def ui_risk():
     st.line_chart(rolling_vol.dropna())
 
 # -------------------------------------------------------------
-# CPI UI
+# CPI UI — FIXED VERSION
 # -------------------------------------------------------------
 def ui_cpi_world():
     st.header("🌍 World CPI Dashboard")
@@ -237,6 +237,7 @@ def ui_cpi_world():
         uploads[c] = st.file_uploader(f"Upload CPI CSV for {c}", type=['csv'], key=f"cpi_{c}")
 
     cpi_dfs = {}
+
     for c in selected:
         up = uploads[c]
         if up:
@@ -251,25 +252,24 @@ def ui_cpi_world():
         else:
             df = sample_cpi_for(c)
 
-        df = df.sort_values('date').reset_index(drop=True)
-        df['YoY'] = df['CPI'].pct_change(12)*100
-        df['MoM'] = df['CPI'].pct_change()*100
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.set_index('date').sort_index()
+        df['YoY'] = df['CPI'].pct_change(12) * 100
+        df['MoM'] = df['CPI'].pct_change() * 100
+
         cpi_dfs[c] = df
 
-    combined = pd.DataFrame()
-    for c,df in cpi_dfs.items():
-        combined[c] = df.set_index('date')['CPI']
-    st.subheader("CPI")
-    st.line_chart(combined.dropna())
+    # ---- FIXED: USE OUTER MERGE TO ALIGN ALL COUNTRY SERIES ----
+    combined_cpi = pd.concat({k: v['CPI'] for k, v in cpi_dfs.items()}, axis=1)
+    st.subheader("CPI Index")
+    st.line_chart(combined_cpi.dropna())
 
-    yoy_df = pd.DataFrame()
-    for c,df in cpi_dfs.items():
-        yoy_df[c] = df.set_index('date')['YoY']
+    combined_yoy = pd.concat({k: v['YoY'] for k, v in cpi_dfs.items()}, axis=1)
     st.subheader("YoY Inflation (%)")
-    st.line_chart(yoy_df.dropna())
+    st.line_chart(combined_yoy.dropna())
 
 # -------------------------------------------------------------
-# INTEREST UI  (FIXED!)
+# INTEREST UI  (unchanged)
 # -------------------------------------------------------------
 def ui_interest():
     st.header("🏦 Interest & EMI Calculator")
@@ -348,4 +348,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
