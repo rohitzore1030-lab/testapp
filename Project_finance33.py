@@ -31,6 +31,19 @@ st.markdown(
             background-color: #0b7285;
             color: white;
         }
+        /* FOOTER FIX */
+        #custom-footer {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            left: 0;
+            padding: 10px;
+            text-align: center;
+            font-size: 13px;
+            color: #8b949e;
+            background-color: #0d1117;
+            border-top: 1px solid #21262d;
+        }
     </style>
     """,
     unsafe_allow_html=True,
@@ -140,7 +153,6 @@ def ui_risk():
     freq_choice = st.selectbox("Data frequency", ["Business days (252)", "Daily (365)", "Monthly (12)"])
     ann_factor = 252 if freq_choice.startswith("Business") else (365 if "Daily" in freq_choice else 12)
 
-    # load data
     try:
         if uploaded and not use_sample:
             df = load_returns_from_csv(uploaded)
@@ -152,7 +164,6 @@ def ui_risk():
     df = ensure_returns_df(df)
     st.dataframe(df.tail(8))
 
-    # weights
     st.subheader("Portfolio Weights")
     cols = list(df.columns)
     wtxt = st.text_input("Comma-separated weights (leave blank for equal)")
@@ -171,7 +182,6 @@ def ui_risk():
         w = np.ones(len(cols)) / len(cols)
     w = w / w.sum()
 
-    # portfolio series
     port_series = (df * w).sum(axis=1).dropna()
 
     mean_period = port_series.mean()
@@ -266,7 +276,7 @@ def ui_interest():
 
     P = st.number_input("Loan Amount (principal)", value=100000.0, format="%.2f")
     r = st.number_input("Annual Rate (%)", value=7.5, format="%.3f")
-    y = st.number_input("Tenor (years)", value=5.0, min_value=0.0, format="%.1f")  # FIXED
+    y = st.number_input("Tenor (years)", value=5.0, min_value=0.0, format="%.1f")
     freq = st.selectbox("Payments per year", [12, 4, 2, 1])
 
     rate = r/100/freq
@@ -326,12 +336,16 @@ with tabs[3]:
     Run:
     streamlit run Project_finance.py
     """)
+
 # -------------------------------------------------------------
 # COPYRIGHT FOOTER
 # -------------------------------------------------------------
 st.markdown(
     """
     <div id="custom-footer">
-        © 2025 Finance Toolkit — Designed & Developed by Rohit  
+        © 2025 Finance Toolkit — Designed & Developed by <b>Rohit</b>
     </div>
     """,
+    unsafe_allow_html=True
+)
+
