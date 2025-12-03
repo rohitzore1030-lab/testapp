@@ -1,5 +1,3 @@
-streamlit run finance_toolkit.py
-
 # -------------------------------------------------------------
 # Finance Toolkit — Ultimate Version (Auto Values + Copyright)
 # -------------------------------------------------------------
