@@ -326,3 +326,12 @@ with tabs[3]:
     Run:
     streamlit run Project_finance.py
     """)
+# -------------------------------------------------------------
+# COPYRIGHT FOOTER
+# -------------------------------------------------------------
+st.markdown(
+    """
+    <div id="custom-footer">
+        © 2025 Finance Toolkit — Designed & Developed by Rohit  
+    </div>
+    """,
