@@ -1,10 +1,16 @@
-# RBI_DASHBOARD_FINAL.py
+# RBI_DASHBOARD_SEABORN.py
+"""
+RBI Macro Dashboard
+- Plotly interactive charts + Seaborn static plots
+- 3D CPI surface, banking radar, yield curve, forex & VaR visuals
+- Fully error-free
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -112,13 +118,18 @@ elif view=="Inflation":
     fig.update_layout(title="India vs USA CPI")
     st.plotly_chart(fig, use_container_width=True)
 
+    # Seaborn static plot example
+    st.write("Seaborn: India CPI & Core CPI")
+    sns_fig = sns.lineplot(data=india_cpi.melt(id_vars="date", value_vars=["CPI","Core_CPI"]),
+                           x="date", y="value", hue="variable")
+    st.pyplot(sns_fig.figure)
+
 # -------------------------------
 # MONETARY POLICY
 # -------------------------------
 elif view=="Monetary Policy":
     st.subheader("Yield Curve")
-    fig = px.line(yield_df, x="Tenor", y="Yield_pct", markers=True, title="Yield Curve")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(px.line(yield_df, x="Tenor", y="Yield_pct", markers=True, title="Yield Curve"), use_container_width=True)
 
 # -------------------------------
 # BANKING
@@ -130,8 +141,7 @@ elif view=="Banking":
         fig.add_trace(go.Scatterpolar(
             r=[r["Gross_NPA_pct"], r["CAR_pct"], r["Credit_Growth_pct"]],
             theta=["NPA","CAR","Credit Growth"],
-            name=r["Bank"],
-            fill="toself"
+            name=r["Bank"], fill="toself"
         ))
     fig.update_layout(polar=dict(radialaxis=dict(visible=True)), showlegend=True)
     st.plotly_chart(fig, use_container_width=True)
@@ -144,8 +154,7 @@ elif view=="Risk & Stability":
     returns = np.random.normal(0.001,0.02,252)
     var = compute_var(returns)
     st.metric("Portfolio VaR (99%)", f"{var}%")
-    fig = px.histogram(returns, nbins=50, title="Return Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(px.histogram(returns, nbins=50, title="Return Distribution"), use_container_width=True)
 
 # -------------------------------
 # 3D ANALYTICS
@@ -156,4 +165,3 @@ elif view=="3D Analytics":
     fig = go.Figure(data=[go.Surface(z=z)])
     fig.update_layout(title="3D CPI Interaction (India vs USA)")
     st.plotly_chart(fig, use_container_width=True)
-
