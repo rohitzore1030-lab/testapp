@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
 
 st.set_page_config(page_title="RBI Economic Dashboard", layout="wide")
 
 # -------------------------------
-# DATA GENERATORS (OFFLINE SAFE)
+# DATA GENERATORS
 # -------------------------------
 @st.cache_data
 def generate_cpi(country):
@@ -52,9 +55,6 @@ def yield_curve():
     yields = [5.2, 5.3, 5.4, 5.6, 6.1, 6.5]
     return pd.DataFrame({"Tenor": tenors, "Yield_pct": yields})
 
-# -------------------------------
-# VAR FUNCTION
-# -------------------------------
 def compute_var(returns, confidence=0.99):
     alpha = 1 - confidence
     var = -np.percentile(returns, alpha * 100)
@@ -75,13 +75,15 @@ yield_df = yield_curve()
 # SIDEBAR
 # -------------------------------
 st.sidebar.title("RBI Macro Controls")
-view = st.sidebar.selectbox("Dashboard View", ["Overview", "Inflation", "Monetary Policy", "Banking", "Risk & Stability"])
+view = st.sidebar.selectbox(
+    "Dashboard View",
+    ["Overview", "Inflation", "Monetary Policy", "Banking", "Risk & Stability", "3D Analytics"]
+)
 
 # -------------------------------
 # HEADER KPIs
 # -------------------------------
 st.title("📊 RBI Macro Economic Dashboard")
-
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Repo Rate", f"{repo_df.iloc[-1]['repo_rate']}%")
 k2.metric("India CPI", india_cpi.iloc[-1]['CPI'])
@@ -89,51 +91,76 @@ k3.metric("USA CPI", usa_cpi.iloc[-1]['CPI'])
 k4.metric("Forex Reserves (USD bn)", forex_df.iloc[-1]['Forex_USD_bn'])
 
 # -------------------------------
-# OVERVIEW DASHBOARD
+# OVERVIEW
 # -------------------------------
 if view == "Overview":
-    st.subheader("📌 Economic Overview")
-    st.line_chart(india_cpi.set_index("date")[["CPI", "Core_CPI"]])
-    st.line_chart(usa_cpi.set_index("date")[["CPI", "Core_CPI"]])
-    st.line_chart(repo_df.set_index("date")["repo_rate"])
-    st.line_chart(forex_df.set_index("date")["Forex_USD_bn"])
-    st.bar_chart(bank_df.set_index("Bank")["Gross_NPA_pct"])
+    st.subheader("Economic Overview")
+
+    fig = px.line(india_cpi, x="date", y=["CPI", "Core_CPI"], title="India Inflation")
+    st.plotly_chart(fig, use_container_width=True)
+
+    fig = px.line(repo_df, x="date", y="repo_rate", title="Repo Rate")
+    st.plotly_chart(fig, use_container_width=True)
+
+    fig = px.bar(bank_df, x="Bank", y="Gross_NPA_pct", title="Bank NPA Levels")
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------
 # INFLATION
 # -------------------------------
 elif view == "Inflation":
-    st.subheader("India Inflation")
-    st.line_chart(india_cpi.set_index("date"))
-    st.subheader("USA Inflation")
-    st.line_chart(usa_cpi.set_index("date"))
+    st.subheader("India vs USA Inflation")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=india_cpi["date"], y=india_cpi["CPI"], name="India CPI"))
+    fig.add_trace(go.Scatter(x=usa_cpi["date"], y=usa_cpi["CPI"], name="USA CPI"))
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------
 # MONETARY POLICY
 # -------------------------------
 elif view == "Monetary Policy":
-    st.subheader("Repo Rate Trends")
-    st.line_chart(repo_df.set_index("date"))
     st.subheader("Yield Curve")
-    st.table(yield_df)
+    fig = px.line(yield_df, x="Tenor", y="Yield_pct", markers=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------
 # BANKING
 # -------------------------------
 elif view == "Banking":
-    st.subheader("Banking Stability Indicators")
-    st.dataframe(bank_df)
-    st.bar_chart(bank_df.set_index("Bank")["Credit_Growth_pct"])
+    st.subheader("Banking Health Radar")
+
+    fig = px.line_polar(
+        bank_df,
+        r="Credit_Growth_pct",
+        theta="Bank",
+        line_close=True
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------
 # RISK & STABILITY
 # -------------------------------
 elif view == "Risk & Stability":
-    st.subheader("Portfolio Risk Meter (VaR)")
-    tickers = ["NIFTY", "BANK", "IT"]
     returns = np.random.normal(0.001, 0.02, 252)
     var = compute_var(returns)
+
     st.metric("Portfolio VaR (99%)", f"{var}%")
+
+    fig = px.histogram(returns, nbins=50, title="Return Distribution")
+    st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------------
+# 3D ANALYTICS
+# -------------------------------
+elif view == "3D Analytics":
+    st.subheader("3D Inflation Surface")
+
+    z = np.outer(india_cpi["CPI"].values[:40], usa_cpi["CPI"].values[:40])
+
+    fig = go.Figure(data=[go.Surface(z=z)])
+    fig.update_layout(title="3D CPI Interaction (India vs USA)")
+    st.plotly_chart(fig, use_container_width=True)
 
 # -------------------------------
 # DOWNLOADS
@@ -143,4 +170,4 @@ st.sidebar.download_button("India CPI CSV", india_cpi.to_csv(index=False), "indi
 st.sidebar.download_button("USA CPI CSV", usa_cpi.to_csv(index=False), "usa_cpi.csv")
 
 st.markdown("---")
-st.caption("Professional RBI-style macro dashboard with Inflation, Policy, Banking, Risk & Forex.")
+st.caption("Professional RBI-style macro dashboard with 3D Finance Visuals")
