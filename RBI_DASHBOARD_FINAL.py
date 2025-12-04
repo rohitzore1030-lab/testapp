@@ -1,13 +1,11 @@
 # RBI_DASHBOARD_SEABORN.py
-
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
+import Seaborn as sns
+import Plotly.express as px
+import Plotly.graph_objects as go
 
 st.set_page_config(page_title="RBI Macro Dashboard", layout="wide")
 
