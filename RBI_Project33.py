@@ -191,3 +191,4 @@ st.markdown("---")
 if not HAS_MATPLOTLIB:
     st.warning("Matplotlib is not installed in this environment. For additional static plots (matplotlib) install `matplotlib` or include it in requirements.txt.")
 st.caption("RBI-style macro dashboard — resilient to missing matplotlib.")
+
